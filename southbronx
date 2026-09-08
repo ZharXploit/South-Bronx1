@@ -1,31 +1,21 @@
 -- ============================================
--- ZHARXUI v4.2 - XENO OPTIMIZED
--- SOUTH BRONX FULL SCRIPT
--- ALL FEATURES WORKING
+-- ZHARXUI v4.2 - SOUTH BRONX [NO BIG HEAD]
+-- KILL AURA MULTI-TARGET + SEMUA FITUR
 -- ============================================
 
 -- ============================================
--- FIX UNTUK XENO EXECUTOR
+-- FIX UNTUK XENO
 -- ============================================
 
--- Fix getgenv untuk Xeno
-if not getgenv then 
-    getgenv = function() return _G end 
-end
+if not getgenv then getgenv = function() return _G end end
 
--- Fix task functions untuk Xeno
 if not task then
-    task = {
-        spawn = spawn,
-        wait = wait,
-        cancel = function() end
-    }
+    task = { spawn = spawn, wait = wait, cancel = function() end }
 end
 if not task.spawn then task.spawn = spawn end
 if not task.wait then task.wait = wait end
 if not task.cancel then task.cancel = function() end
 
--- Fix fireproximityprompt untuk Xeno
 if not fireproximityprompt then
     fireproximityprompt = function(prompt)
         if prompt and prompt:IsA("ProximityPrompt") then
@@ -39,7 +29,7 @@ if not fireproximityprompt then
 end
 
 -- ============================================
--- LOAD KAVO LIBRARY (XENO FRIENDLY)
+-- LOAD KAVO
 -- ============================================
 
 local Kavo = nil
@@ -66,7 +56,6 @@ end
 
 if not Kavo then
     print("⚠️ Kavo Library gagal load, membuat UI manual...")
-    -- Fallback UI sederhana
     Kavo = {
         CreateLib = function(title, theme)
             return {
@@ -117,22 +106,19 @@ getgenv().ZharXUI = {
     FlyEnabled = false,
     AimbotEnabled = false,
     SilentAimEnabled = false,
-    BigHeadCombatEnabled = false,
     MarshmallowFarm = false,
     PotatoFarm = false,
     AutoSellEnabled = false,
     ESPEnabled = false,
     AntiAFKEnabled = false,
     KillAuraEnabled = false,
-    BigHeadSize = 20,
-    BigHeadTransparency = 30,
     AimbotFOV = 200,
     AimbotSmoothness = 0.3,
     FlySpeed = 50,
     SilentAimFOV = 200,
-    KillAuraRange = 100,
-    KillAuraDelay = 0.3,
-    KillAuraDamage = 25,
+    KillAuraRange = 150,
+    KillAuraDelay = 0.05,
+    KillAuraDamage = 999,
     SavedWaypoints = {
         MarshmallowDealer = nil,
         DeliStore = nil,
@@ -168,7 +154,6 @@ local autoSellThread = nil
 local espObjects = {}
 local silentAimConnection = nil
 local antiAFKConnection = nil
-local bigHeadRenderConnection = nil
 local killAuraThread = nil
 local autoFarmThread = nil
 local isAutoFarming = false
@@ -176,7 +161,6 @@ local isAutoFarming = false
 -- Kill Aura variables
 local killAuraWeapon = nil
 local isKillAuraActive = false
-local currentTarget = nil
 
 -- ============================================
 -- FUNGSI NOTIFIKASI
@@ -302,100 +286,6 @@ local function findNearestPrompt(keywords, maxDistance)
     end
     
     return closest
-end
-
--- ============================================
--- BIG HEAD - ANTI LAG
--- ============================================
-
-local bigHeadCache = {}
-local bigHeadCacheTime = 0
-local bigHeadUpdateInterval = 1.0
-local bigHeadFrameCounter = 0
-local bigHeadMaxFrames = 3
-
-function removeBigHeadFromEnemies()
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            local head = player.Character:FindFirstChild("Head")
-            if head then
-                local origSize = head:GetAttribute("OriginalHeadSize")
-                local origTrans = head:GetAttribute("OriginalTransparency")
-                local origCollide = head:GetAttribute("OriginalCanCollide")
-                local origMassless = head:GetAttribute("OriginalMassless")
-                
-                if origSize then head.Size = origSize end
-                if origTrans then head.Transparency = origTrans end
-                if origCollide ~= nil then head.CanCollide = origCollide end
-                if origMassless ~= nil then head.Massless = origMassless end
-            end
-        end
-    end
-    bigHeadCache = {}
-end
-
-function toggleBigHeadCombat(state)
-    getgenv().ZharXUI.BigHeadCombatEnabled = state
-    if state then
-        if not bigHeadRenderConnection then
-            bigHeadRenderConnection = RunService.Heartbeat:Connect(function()
-                if not getgenv().ZharXUI.BigHeadCombatEnabled then return end
-                
-                bigHeadFrameCounter = bigHeadFrameCounter + 1
-                if bigHeadFrameCounter < bigHeadMaxFrames then return end
-                bigHeadFrameCounter = 0
-                
-                local now = tick()
-                if now - bigHeadCacheTime > bigHeadUpdateInterval then
-                    bigHeadCache = {}
-                    for _, player in ipairs(Players:GetPlayers()) do
-                        if player ~= LocalPlayer and player.Character then
-                            local head = player.Character:FindFirstChild("Head")
-                            if head and head.Parent then
-                                bigHeadCache[player] = head
-                            end
-                        end
-                    end
-                    bigHeadCacheTime = now
-                end
-                
-                local currentSize = getgenv().ZharXUI.BigHeadSize or 20
-                local currentTrans = (getgenv().ZharXUI.BigHeadTransparency or 30) / 100
-                
-                for player, head in pairs(bigHeadCache) do
-                    if head and head.Parent then
-                        if not head:GetAttribute("OriginalHeadSize") then
-                            head:SetAttribute("OriginalHeadSize", head.Size)
-                        end
-                        if not head:GetAttribute("OriginalTransparency") then
-                            head:SetAttribute("OriginalTransparency", head.Transparency)
-                        end
-                        if head:GetAttribute("OriginalCanCollide") == nil then
-                            head:SetAttribute("OriginalCanCollide", head.CanCollide)
-                        end
-                        if head:GetAttribute("OriginalMassless") == nil then
-                            head:SetAttribute("OriginalMassless", head.Massless)
-                        end
-                        
-                        head.Size = Vector3.new(currentSize, currentSize, currentSize)
-                        head.Transparency = currentTrans
-                        head.CanCollide = false
-                        head.CanQuery = true
-                        head.CanTouch = true
-                        head.Massless = true
-                    end
-                end
-            end)
-        end
-    else
-        if bigHeadRenderConnection then
-            bigHeadRenderConnection:Disconnect()
-            bigHeadRenderConnection = nil
-        end
-        removeBigHeadFromEnemies()
-        bigHeadCache = {}
-        bigHeadFrameCounter = 0
-    end
 end
 
 -- ============================================
@@ -688,31 +578,13 @@ function toggleAntiAFK(state)
 end
 
 -- ============================================
--- KILL AURA ULTIMATE
+-- KILL AURA MULTI-TARGET V5 - ALL ENEMIES DIE!
 -- ============================================
 
 local function getCurrentWeapon()
     local char = LocalPlayer.Character
     if not char then return nil end
     return char:FindFirstChildOfClass("Tool")
-end
-
-local function getBestWeapon()
-    local char = LocalPlayer.Character
-    if not char then return nil end
-    
-    local currentWeapon = char:FindFirstChildOfClass("Tool")
-    if currentWeapon then return currentWeapon end
-    
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if backpack then
-        for _, tool in ipairs(backpack:GetChildren()) do
-            if tool:IsA("Tool") then
-                return tool
-            end
-        end
-    end
-    return nil
 end
 
 local function autoEquipWeapon()
@@ -740,93 +612,18 @@ local function autoEquipWeapon()
     return false
 end
 
-local function autoShoot(target)
-    if not target or not target.Character then return end
-    
-    local targetChar = target.Character
-    local targetHead = targetChar:FindFirstChild("Head")
-    local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
-    local targetHumanoid = targetChar:FindFirstChild("Humanoid")
-    
-    if not targetHumanoid or targetHumanoid.Health <= 0 then return end
-    
-    local aimPart = targetHead or targetRoot
-    if aimPart then
-        pcall(function()
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, aimPart.Position)
-        end)
-    end
-    
-    pcall(function()
-        if getgenv().mouse then
-            getgenv().mouse.Button1Down:Fire()
-            task.wait(0.02)
-            getgenv().mouse.Button1Up:Fire()
-        end
-    end)
-    
-    local weapon = killAuraWeapon or getCurrentWeapon()
-    if weapon then
-        for _, remote in ipairs(weapon:GetDescendants()) do
-            if remote:IsA("RemoteEvent") then
-                local name = remote.Name:lower()
-                if string.find(name, "fire") or string.find(name, "shoot") or 
-                   string.find(name, "attack") or string.find(name, "hit") or 
-                   string.find(name, "damage") or string.find(name, "click") then
-                    pcall(function()
-                        remote:FireServer(targetChar, 999)
-                        remote:FireServer(targetHumanoid, 999)
-                        remote:FireServer(targetHead, 999)
-                        remote:FireServer(targetRoot, 999)
-                        remote:FireServer(target, 999)
-                    end)
-                end
-            end
-        end
-    end
-    
-    for _, remote in ipairs(game:GetDescendants()) do
-        if remote:IsA("RemoteEvent") then
-            local name = remote.Name:lower()
-            if string.find(name, "damage") or string.find(name, "hit") or 
-               string.find(name, "attack") or string.find(name, "shoot") then
-                pcall(function()
-                    remote:FireServer(targetChar, 999)
-                    remote:FireServer(targetHumanoid, 999)
-                    remote:FireServer(targetHead, 999)
-                end)
-            end
-        end
-    end
-    
-    if weapon and weapon:FindFirstChild("Activate") then
-        pcall(function()
-            weapon.Activate:FireServer()
-        end)
-    end
-    
-    for _, remote in ipairs(game:GetDescendants()) do
-        if remote:IsA("RemoteFunction") then
-            local name = remote.Name:lower()
-            if string.find(name, "damage") or string.find(name, "hit") or 
-               string.find(name, "attack") or string.find(name, "shoot") then
-                pcall(function()
-                    remote:InvokeServer(targetChar, 999)
-                end)
-            end
-        end
-    end
-end
-
-local function findBestTarget(maxRange)
-    maxRange = maxRange or 100
+-- SERANG SEMUA TARGET SEKALIGUS!
+local function dealDamageToAllTargets()
     local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     
     local rootPos = char.HumanoidRootPart.Position
-    local bestTarget = nil
-    local bestScore = -1
+    local maxRange = getgenv().ZharXUI.KillAuraRange or 150
+    local damage = getgenv().ZharXUI.KillAuraDamage or 999
     
+    local targets = {}
+    
+    -- Kumpulkan semua target dalam jangkauan
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
             local targetChar = player.Character
@@ -835,26 +632,95 @@ local function findBestTarget(maxRange)
             
             if targetHumanoid and targetHumanoid.Health > 0 and targetRoot then
                 local dist = (rootPos - targetRoot.Position).Magnitude
-                local score = (maxRange - dist) + (targetHumanoid.Health / 10)
-                
-                local raycast = RaycastParams.new()
-                raycast.FilterDescendantsInstances = {char}
-                raycast.IgnoreWater = true
-                
-                local ray = workspace:Raycast(rootPos, (targetRoot.Position - rootPos).Unit * dist, raycast)
-                if not ray then
-                    score = score + 50
-                end
-                
-                if score > bestScore then
-                    bestScore = score
-                    bestTarget = player
+                if dist < maxRange then
+                    table.insert(targets, player)
                 end
             end
         end
     end
     
-    return bestTarget
+    if #targets == 0 then return end
+    
+    -- SERANG SEMUA TARGET SEKALIGUS!
+    for _, target in ipairs(targets) do
+        local targetChar = target.Character
+        local targetHumanoid = targetChar:FindFirstChild("Humanoid")
+        local targetHead = targetChar:FindFirstChild("Head")
+        local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
+        
+        if targetHumanoid and targetHumanoid.Health > 0 then
+            -- Method 1: FireServer via weapon
+            local weapon = killAuraWeapon or getCurrentWeapon()
+            if weapon then
+                for _, remote in ipairs(weapon:GetDescendants()) do
+                    if remote:IsA("RemoteEvent") then
+                        pcall(function()
+                            remote:FireServer(targetChar, damage)
+                            remote:FireServer(targetHumanoid, damage)
+                            remote:FireServer(targetHead, damage)
+                            remote:FireServer(targetRoot, damage)
+                        end)
+                    end
+                end
+            end
+            
+            -- Method 2: FireServer via game
+            for _, remote in ipairs(game:GetDescendants()) do
+                if remote:IsA("RemoteEvent") then
+                    local name = remote.Name:lower()
+                    if string.find(name, "damage") or string.find(name, "hit") or 
+                       string.find(name, "attack") or string.find(name, "shoot") or
+                       string.find(name, "fire") then
+                        pcall(function()
+                            remote:FireServer(targetChar, damage)
+                            remote:FireServer(targetHumanoid, damage)
+                            remote:FireServer(targetHead, damage)
+                            remote:FireServer(targetRoot, damage)
+                        end)
+                    end
+                end
+            end
+            
+            -- Method 3: RemoteFunction
+            for _, remote in ipairs(game:GetDescendants()) do
+                if remote:IsA("RemoteFunction") then
+                    local name = remote.Name:lower()
+                    if string.find(name, "damage") or string.find(name, "hit") or 
+                       string.find(name, "attack") or string.find(name, "shoot") then
+                        pcall(function()
+                            remote:InvokeServer(targetChar, damage)
+                            remote:InvokeServer(targetHumanoid, damage)
+                        end)
+                    end
+                end
+            end
+            
+            -- Method 4: Tool Activate
+            if weapon and weapon:FindFirstChild("Activate") then
+                pcall(function()
+                    weapon.Activate:FireServer()
+                end)
+            end
+        end
+    end
+    
+    -- Kalau ada target, arahkan kamera ke target pertama (opsional)
+    if #targets > 0 then
+        local firstTarget = targets[1]
+        if firstTarget and firstTarget.Character then
+            local aimPart = firstTarget.Character:FindFirstChild("Head") or firstTarget.Character:FindFirstChild("HumanoidRootPart")
+            if aimPart then
+                pcall(function()
+                    Camera.CFrame = CFrame.new(Camera.CFrame.Position, aimPart.Position)
+                end)
+            end
+        end
+    end
+    
+    -- Tampilkan jumlah target yang diserang (cuma kadang-kadang biar ga spam)
+    if #targets > 0 and math.random(1, 10) == 1 then
+        showWarning("Kill Aura", "⚔️ Menyerang " .. #targets .. " target!")
+    end
 end
 
 function toggleKillAura(state)
@@ -867,6 +733,7 @@ function toggleKillAura(state)
             killAuraThread = nil
         end
         
+        -- Auto equip weapon
         autoEquipWeapon()
         
         if not killAuraWeapon then
@@ -876,23 +743,24 @@ function toggleKillAura(state)
             return
         end
         
-        showWarning("Kill Aura", "🔫 Kill Aura AKTIF! Senjata: " .. killAuraWeapon.Name)
+        showWarning("Kill Aura", "🔫 Kill Aura MULTI-TARGET AKTIF! Semua musuh dalam jangkauan akan mati!")
         
         killAuraThread = task.spawn(function()
             while isKillAuraActive do
+                -- Cek weapon masih ada
                 if not killAuraWeapon or not killAuraWeapon.Parent then
                     autoEquipWeapon()
+                    if not killAuraWeapon then
+                        showWarning("Kill Aura", "⚠️ Senjata hilang! Matikan dan nyalakan ulang.")
+                        break
+                    end
                 end
                 
-                local maxRange = getgenv().ZharXUI.KillAuraRange or 100
-                local target = findBestTarget(maxRange)
+                -- SERANG SEMUA TARGET!
+                dealDamageToAllTargets()
                 
-                if target then
-                    currentTarget = target
-                    autoShoot(target)
-                end
-                
-                local delay = getgenv().ZharXUI.KillAuraDelay or 0.1
+                -- Delay
+                local delay = getgenv().ZharXUI.KillAuraDelay or 0.05
                 task.wait(delay)
             end
         end)
@@ -902,11 +770,18 @@ function toggleKillAura(state)
             killAuraThread = nil
         end
         isKillAuraActive = false
-        currentTarget = nil
         killAuraWeapon = nil
         showWarning("Kill Aura", "⏹️ Kill Aura DINONAKTIFKAN")
     end
 end
+
+-- Auto equip saat respawn
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    if getgenv().ZharXUI.KillAuraEnabled then
+        autoEquipWeapon()
+    end
+end)
 
 -- ============================================
 -- AUTO BUY FUNCTIONS
@@ -1070,7 +945,6 @@ end
 -- ============================================
 
 function unloadAll()
-    toggleBigHeadCombat(false)
     toggleFly(false)
     toggleAimbot(false)
     toggleSilentAim(false)
@@ -1090,22 +964,17 @@ function unloadAll()
 end
 
 -- ============================================
--- UI INTERFACE SETUP (XENO FRIENDLY)
+-- UI INTERFACE SETUP
 -- ============================================
 
--- Hapus UI lama
-pcall(function()
-    if CoreGui:FindFirstChild("ZharXUI_ToggleGui") then
-        CoreGui.ZharXUI_ToggleGui:Destroy()
-    end
-end)
+if CoreGui:FindFirstChild("ZharXUI_ToggleGui") then
+    CoreGui.ZharXUI_ToggleGui:Destroy()
+end
 
--- Buat ScreenGui dengan parent yang aman untuk Xeno
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "ZharXUI_ToggleGui"
 ScreenGui.ResetOnSpawn = false
 
--- Coba berbagai parent untuk Xeno
 local parentSuccess = false
 local parentOptions = {
     CoreGui,
@@ -1123,7 +992,6 @@ for _, parent in ipairs(parentOptions) do
 end
 
 if not parentSuccess then
-    -- Fallback: coba gethui
     pcall(function()
         if gethui then
             ScreenGui.Parent = gethui()
@@ -1133,7 +1001,7 @@ if not parentSuccess then
 end
 
 -- ============================================
--- CUSTOM THEME
+-- THEME
 -- ============================================
 
 local CustomTheme = {
@@ -1141,10 +1009,42 @@ local CustomTheme = {
     Background = Color3.fromRGB(15, 15, 15),
     Header = Color3.fromRGB(20, 20, 20),
     TextColor = Color3.fromRGB(255, 255, 255),
-    ToggleColor = Color3.fromRGB(0, 255, 120)
+    ToggleColor = Color3.fromRGB(255, 0, 0)
 }
 
 local MainWindow = Kavo.CreateLib("ZharXUI | South Bronx v4.2", CustomTheme)
+
+-- ============================================
+-- TOGGLE BUTTON
+-- ============================================
+
+local ToggleButton = Instance.new("ImageButton")
+local UICorner = Instance.new("UICorner")
+local UIAspectRatioConstraint = Instance.new("UIAspectRatioConstraint")
+
+ToggleButton.Name = "ZX_LogoButton"
+ToggleButton.Parent = ScreenGui
+ToggleButton.Position = UDim2.new(0, 15, 0.2, 0)
+ToggleButton.Size = UDim2.new(0, 60, 0, 60)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+ToggleButton.Active = true
+ToggleButton.Draggable = true
+ToggleButton.Image = "rbxassetid://130484989541306"
+ToggleButton.ScaleType = Enum.ScaleType.Fit
+
+local ToggleStroke = Instance.new("UIStroke")
+ToggleStroke.Color = Color3.fromRGB(255, 255, 255)
+ToggleStroke.Thickness = 1
+ToggleStroke.Parent = ToggleButton
+
+UIAspectRatioConstraint.Parent = ToggleButton
+UIAspectRatioConstraint.AspectRatio = 1
+UICorner.CornerRadius = UDim.new(1, 0)
+UICorner.Parent = ToggleButton
+
+ToggleButton.MouseButton1Click:Connect(function()
+    Kavo:ToggleUI()
+end)
 
 -- ============================================
 -- TAB MOVEMENT
@@ -1161,21 +1061,10 @@ MovementSection:NewSlider("Kecepatan Terbang", "Atur kecepatan", 500, 10, functi
 end)
 
 -- ============================================
--- TAB COMBAT
+-- TAB COMBAT (TANPA BIG HEAD)
 -- ============================================
 
 local CombatTab = MainWindow:NewTab("Combat")
-
-local BigHeadCombatSection = CombatTab:NewSection("Big Head")
-BigHeadCombatSection:NewToggle("Aktifkan Big Head Musuh", "Nyalakan/matikan kepala besar", function(state)
-    toggleBigHeadCombat(state)
-end)
-BigHeadCombatSection:NewSlider("Ukuran Kepala Musuh", "Skala 1x s/d 50x", 50, 1, function(value)
-    getgenv().ZharXUI.BigHeadSize = value
-end)
-BigHeadCombatSection:NewSlider("Transparansi Kepala", "0% Jelas s/d 80% Samar", 80, 0, function(value)
-    getgenv().ZharXUI.BigHeadTransparency = value
-end)
 
 local AimbotSection = CombatTab:NewSection("Aimbot")
 AimbotSection:NewToggle("Aktifkan Aimbot", "Auto-lock ke target", function(state)
@@ -1198,17 +1087,21 @@ SilentAimSection:NewSlider("FOV Silent Aim", "Field of View", 500, 50, function(
     getgenv().ZharXUI.SilentAimFOV = value
 end)
 
-local KillAuraSection = CombatTab:NewSection("Kill Aura")
-KillAuraSection:NewToggle("Aktifkan Kill Aura", "Auto pegang senjata + tembus tembok", function(state)
+-- ============================================
+-- KILL AURA MULTI-TARGET SECTION
+-- ============================================
+
+local KillAuraSection = CombatTab:NewSection("⚔️ Kill Aura MULTI-TARGET")
+KillAuraSection:NewToggle("Aktifkan Kill Aura", "Semua musuh dalam jangkauan langsung mati!", function(state)
     toggleKillAura(state)
 end)
-KillAuraSection:NewSlider("Range Kill Aura", "Jarak serangan (studs)", 1000, 10, function(value)
+KillAuraSection:NewSlider("Range Kill Aura", "Jarak serangan (studs)", 500, 50, function(value)
     getgenv().ZharXUI.KillAuraRange = value
 end)
-KillAuraSection:NewSlider("Delay Serangan", "Interval (misal: 30 = 0.3s)", 200, 5, function(value)
+KillAuraSection:NewSlider("Delay Serangan", "0.01 = Super Cepat, 0.3 = Normal", 30, 1, function(value)
     getgenv().ZharXUI.KillAuraDelay = value / 100.0
 end)
-KillAuraSection:NewSlider("Damage Per Hit", "Damage ke musuh", 1000, 1, function(value)
+KillAuraSection:NewSlider("Damage Per Hit", "Damage ke musuh", 9999, 1, function(value)
     getgenv().ZharXUI.KillAuraDamage = value
 end)
 
@@ -1356,7 +1249,7 @@ SettingsSection:NewButton("Unload Script", "Hapus semua fitur", function()
 end)
 
 -- ============================================
--- KEYBIND (Insert untuk buka/tutup UI)
+-- KEYBIND
 -- ============================================
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -1366,26 +1259,20 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- Auto equip weapon saat spawn (untuk Kill Aura)
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    if getgenv().ZharXUI.KillAuraEnabled then
-        autoEquipWeapon()
-    end
-end)
-
 -- ============================================
 -- DONE
 -- ============================================
 
 print("========================================")
-print("  ZHARXUI v4.2 - XENO OPTIMIZED")
+print("  ZHARXUI v4.2 - KILL AURA MULTI-TARGET")
 print("  ====================================")
-print("  ✅ Semua fitur bekerja di Xeno")
-print("  ✅ Anti Lag Big Head")
-print("  ✅ Kill Aura Ultimate")
-print("  ✅ Auto Buy + Auto Farm Full Cycle")
+print("  ✅ KILL AURA MULTI-TARGET")
+print("     Semua musuh dalam jangkauan mati!")
+print("  ✅ FLY | AIMBOT | SILENT AIM")
+print("  ✅ ESP | ANTI AFK")
+print("  ✅ AUTO FARM FULL CYCLE")
+print("  ✅ AUTO BUY")
 print("  ✅ Klik INSERT untuk buka UI")
 print("========================================")
 
-showWarning("ZharXUI v4.2", "✅ Script loaded! Klik Insert untuk buka UI", 4)
+showWarning("ZharXUI v4.2", "✅ KILL AURA MULTI-TARGET! Semua musuh dalam jangkauan mati!", 4)
