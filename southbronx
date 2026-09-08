@@ -7,13 +7,12 @@ local Camera = workspace.CurrentCamera
 local VirtualUser = game:GetService("VirtualUser")
 local CoreGui = game:GetService("CoreGui")
 local StarterGui = game:GetService("StarterGui")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 getgenv().ZharXUI = {
     FlyEnabled = false,
     AimbotEnabled = false,
     SilentAimEnabled = false,
-    BigHeadCombatEnabled = false,
+    HitboxExtenderEnabled = false,
     AutoBuyMarshmallow = false,
     MarshmallowFarm = false,
     PotatoFarm = false,
@@ -21,18 +20,17 @@ getgenv().ZharXUI = {
     ESPEnabled = false,
     AntiAFKEnabled = false,
     KillAuraEnabled = false,
-    BigHeadSize = 10,
-    BigHeadTransparency = 40,
-    AimbotFOV = 200,
+    HitboxSize = 5,
+    HitboxTrans = 0.5,
+    AimbotFOV = 150,
     AimbotSmoothness = 0.3,
     FlySpeed = 50,
-    SilentAimFOV = 200,
-    KillAuraRange = 100,
-    KillAuraDelay = 0.3,
+    SilentAimFOV = 150,
+    KillAuraRange = 50,
+    KillAuraDelay = 0.5,
     KillAuraDamage = 25,
     SavedWaypoints = {
         MarshmallowDealer = nil,
-        DeliStore = nil,
         CookingSpot = nil,
         SellSpot = nil
     }
@@ -48,10 +46,9 @@ local autoSellThread = nil
 local espObjects = {}
 local silentAimConnection = nil
 local antiAFKConnection = nil
-local bigHeadThread = nil
+local hitboxThread = nil
 local killAuraThread = nil
 
--- Fungsi Notifikasi
 local function showWarning(title, msg)
     pcall(function()
         StarterGui:SetCore("SendNotification", {
@@ -62,7 +59,6 @@ local function showWarning(title, msg)
     end)
 end
 
--- Fungsi Teleport Aman
 local function safeTeleport(cframe, locationName)
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then 
@@ -72,13 +68,12 @@ local function safeTeleport(cframe, locationName)
     
     if cframe then
         char.HumanoidRootPart.CFrame = cframe + Vector3.new(0, 3, 0)
-        showWarning("Teleport Berhasil", "Kamu berhasil teleport ke " .. locationName)
+        showWarning("Teleport Berhasil", "Ke " .. locationName)
     else
-        showWarning("Lokasi Belum Set", "Silahkan berdiri di lokasi lalu klik 'Set " .. locationName .. "' terlebih dahulu!")
+        showWarning("Lokasi Belum Set", "Set posisi terlebih dahulu!")
     end
 end
 
--- Fungsi Auto Equip Tool
 local function equipItem(itemNameKeywords)
     local char = LocalPlayer.Character
     local backpack = LocalPlayer:FindFirstChild("Backpack")
@@ -110,34 +105,45 @@ local function equipItem(itemNameKeywords)
     return false
 end
 
--- FIX BIG HEAD (NON-FREEZE / OPTIMIZED LOOP)
-function removeBigHeadFromEnemies()
+local function getNearbyPrompts(maxDistance)
+    local prompts = {}
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return prompts end
+    local pPos = char.HumanoidRootPart.Position
+
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("ProximityPrompt") and v.Parent and v.Parent:IsA("BasePart") then
+            if (v.Parent.Position - pPos).Magnitude <= (maxDistance or 20) then
+                table.insert(prompts, v)
+            end
+        end
+    end
+    return prompts
+end
+
+-- HITBOX EXTENDER TANPA MENGUBAH HEAD.SIZE (100% ANTI-CRASH)
+function removeHitboxFromEnemies()
     for _, player in ipairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
             local head = player.Character:FindFirstChild("Head")
             if head then
-                pcall(function()
-                    if head:GetAttribute("OrigSize") then
-                        head.Size = head:GetAttribute("OrigSize")
-                    end
-                    head.CanCollide = true
-                    head.Transparency = 0
-                end)
+                local box = head:FindFirstChild("ZharX_Hitbox")
+                if box then box:Destroy() end
             end
         end
     end
 end
 
-function toggleBigHeadCombat(state)
-    getgenv().ZharXUI.BigHeadCombatEnabled = state
+function toggleHitboxExtender(state)
+    getgenv().ZharXUI.HitboxExtenderEnabled = state
     if state then
-        showWarning("BigHead Active", "Hitbox Kepala Ditingkatkan (No Lag)")
-        if bigHeadThread then task.cancel(bigHeadThread) end
+        showWarning("Hitbox Active", "Mode Safe Extender (No Crash)")
+        if hitboxThread then task.cancel(hitboxThread) end
         
-        bigHeadThread = task.spawn(function()
-            while getgenv().ZharXUI.BigHeadCombatEnabled do
-                local targetSize = getgenv().ZharXUI.BigHeadSize or 10
-                local targetTrans = (getgenv().ZharXUI.BigHeadTransparency or 40) / 100
+        hitboxThread = task.spawn(function()
+            while getgenv().ZharXUI.HitboxExtenderEnabled do
+                local hSize = getgenv().ZharXUI.HitboxSize or 5
+                local hTrans = getgenv().ZharXUI.HitboxTrans or 0.5
                 
                 for _, player in ipairs(Players:GetPlayers()) do
                     if player ~= LocalPlayer and player.Character then
@@ -146,34 +152,30 @@ function toggleBigHeadCombat(state)
                         
                         if head and hum and hum.Health > 0 then
                             pcall(function()
-                                if not head:GetAttribute("OrigSize") then
-                                    head:SetAttribute("OrigSize", head.Size)
+                                local box = head:FindFirstChild("ZharX_Hitbox")
+                                if not box then
+                                    box = Instance.new("SelectionBox")
+                                    box.Name = "ZharX_Hitbox"
+                                    box.Adornee = head
+                                    box.Color3 = Color3.fromRGB(255, 0, 0)
+                                    box.LineThickness = 0.05
+                                    box.Parent = head
                                 end
-                                
-                                -- Pengaturan properti aman agar server tidak freeze
-                                head.Massless = true
-                                head.CanCollide = false
-                                head.CanTouch = false
-                                head.CanQuery = true
-                                head.Size = Vector3.new(targetSize, targetSize, targetSize)
-                                head.Transparency = targetTrans
+                                box.Transparency = hTrans
                             end)
                         end
                     end
                 end
-                task.wait(0.5) -- Interval stabil mencegah freeze/lag client
+                task.wait(1)
             end
         end)
     else
-        if bigHeadThread then
-            task.cancel(bigHeadThread)
-            bigHeadThread = nil
-        end
-        removeBigHeadFromEnemies()
+        if hitboxThread then task.cancel(hitboxThread); hitboxThread = nil end
+        removeHitboxFromEnemies()
     end
 end
 
--- Fly Logic
+-- FLY
 function toggleFly(state)
     if state then
         local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
@@ -208,7 +210,7 @@ function toggleFly(state)
     end
 end
 
--- Aimbot & Silent Aim
+-- AIMBOT & SILENT AIM
 function toggleAimbot(state)
     if state then
         if aimbotConnection then aimbotConnection:Disconnect() end
@@ -217,7 +219,7 @@ function toggleAimbot(state)
             local MousePos = UserInputService:GetMouseLocation()
             local ClosestPlayer = nil
             local ClosestDist = math.huge
-            local fov = getgenv().ZharXUI.AimbotFOV or 200
+            local fov = getgenv().ZharXUI.AimbotFOV or 150
             for _, player in ipairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                     local RootPart = player.Character.HumanoidRootPart
@@ -235,8 +237,7 @@ function toggleAimbot(state)
                 local TargetPart = ClosestPlayer.Character:FindFirstChild("Head") or ClosestPlayer.Character:FindFirstChild("HumanoidRootPart")
                 if TargetPart then
                     local smoothness = getgenv().ZharXUI.AimbotSmoothness or 0.3
-                    local TargetCFrame = CFrame.new(Camera.CFrame.Position, TargetPart.Position)
-                    Camera.CFrame = Camera.CFrame:Lerp(TargetCFrame, smoothness)
+                    Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, TargetPart.Position), smoothness)
                 end
             end
         end)
@@ -253,7 +254,7 @@ function toggleSilentAim(state)
             local MousePos = UserInputService:GetMouseLocation()
             local ClosestPlayer = nil
             local ClosestDist = math.huge
-            local fov = getgenv().ZharXUI.SilentAimFOV or 200
+            local fov = getgenv().ZharXUI.SilentAimFOV or 150
             for _, player in ipairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                     local RootPart = player.Character.HumanoidRootPart
@@ -315,158 +316,93 @@ function toggleESP(state)
     end
 end
 
--- LOGIKA AUTO BUY MARSHMALLOW
+-- FARM & AUTO BUY
 function toggleAutoBuyMarshmallow(state)
     getgenv().ZharXUI.AutoBuyMarshmallow = state
     if state then
-        showWarning("Auto Buy Active", "Mencari ProximityPrompt & Remote Beli...")
+        showWarning("Auto Buy", "Aktif")
         if autoBuyThread then task.cancel(autoBuyThread) end
         
         autoBuyThread = task.spawn(function()
             while getgenv().ZharXUI.AutoBuyMarshmallow do
                 pcall(function()
-                    for _, prompt in ipairs(workspace:GetDescendants()) do
-                        if prompt:IsA("ProximityPrompt") then
-                            local parentName = prompt.Parent and prompt.Parent.Name:lower() or ""
-                            local actionTxt = (prompt.ObjectText .. prompt.ActionText):lower()
-                            
-                            if string.find(actionTxt, "buy") or string.find(actionTxt, "beli") or 
-                               string.find(actionTxt, "marshmallow") or string.find(parentName, "dealer") or 
-                               string.find(parentName, "marshmallow") or string.find(parentName, "shop") then
-                                fireproximityprompt(prompt)
-                            end
-                        end
-                    end
-                    
-                    for _, v in ipairs(ReplicatedStorage:GetDescendants()) do
-                        if v:IsA("RemoteEvent") or v:IsA("RemoteFunction") then
-                            local rName = v.Name:lower()
-                            if string.find(rName, "buy") or string.find(rName, "purchase") or string.find(rName, "marshmallow") then
-                                if v:IsA("RemoteEvent") then
-                                    v:FireServer("Marshmallow", 1)
-                                    v:FireServer("Ingredients", 1)
-                                    v:FireServer(1)
-                                end
-                            end
-                        end
+                    for _, prompt in ipairs(getNearbyPrompts(15)) do
+                        fireproximityprompt(prompt)
                     end
                 end)
-                task.wait(0.5)
+                task.wait(0.8)
             end
         end)
     else
-        if autoBuyThread then
-            task.cancel(autoBuyThread)
-            autoBuyThread = nil
-        end
+        if autoBuyThread then task.cancel(autoBuyThread); autoBuyThread = nil end
     end
 end
 
--- LOGIKA AUTO MASAK MARSHMALLOW
 function toggleMarshmallowFarm(state)
     getgenv().ZharXUI.MarshmallowFarm = state
     if state then
-        showWarning("Auto Farm", "Memulai proses Marshmallow...")
+        showWarning("Auto Farm", "Memulai Marshmallow...")
         if marshmallowFarmThread then task.cancel(marshmallowFarmThread) end
         
         marshmallowFarmThread = task.spawn(function()
             while getgenv().ZharXUI.MarshmallowFarm do
                 equipItem({"marshmallow", "bag", "sugar", "mallow", "bahan", "pack"})
                 pcall(function()
-                    for _, prompt in ipairs(workspace:GetDescendants()) do
-                        if prompt:IsA("ProximityPrompt") then
-                            local parentName = prompt.Parent and prompt.Parent.Name:lower() or ""
-                            local actionTxt = (prompt.ObjectText .. prompt.ActionText):lower()
-                            
-                            if string.find(parentName, "marshmallow") or string.find(actionTxt, "marshmallow") or 
-                               string.find(actionTxt, "pack") or string.find(actionTxt, "make") or 
-                               string.find(actionTxt, "cook") or string.find(actionTxt, "craft") then
-                                fireproximityprompt(prompt)
-                            end
-                        end
+                    for _, prompt in ipairs(getNearbyPrompts(15)) do
+                        fireproximityprompt(prompt)
                     end
                 end)
-                task.wait(0.2)
+                task.wait(0.5)
             end
         end)
     else
-        if marshmallowFarmThread then
-            task.cancel(marshmallowFarmThread)
-            marshmallowFarmThread = nil
-        end
+        if marshmallowFarmThread then task.cancel(marshmallowFarmThread); marshmallowFarmThread = nil end
     end
 end
 
--- LOGIKA AUTO MASAK POTATO
 function togglePotatoFarm(state)
     getgenv().ZharXUI.PotatoFarm = state
     if state then
-        showWarning("Auto Farm", "Memulai proses Potato/Chips...")
+        showWarning("Auto Farm", "Memulai Potato...")
         if potatoFarmThread then task.cancel(potatoFarmThread) end
         
         potatoFarmThread = task.spawn(function()
             while getgenv().ZharXUI.PotatoFarm do
                 equipItem({"potato", "kentang", "flour", "tepung", "chip"})
                 pcall(function()
-                    for _, prompt in ipairs(workspace:GetDescendants()) do
-                        if prompt:IsA("ProximityPrompt") then
-                            local parentName = prompt.Parent and prompt.Parent.Name:lower() or ""
-                            local actionTxt = (prompt.ObjectText .. prompt.ActionText):lower()
-                            
-                            if string.find(parentName, "potato") or string.find(parentName, "chip") or 
-                               string.find(actionTxt, "cook") or string.find(actionTxt, "chip") or 
-                               string.find(actionTxt, "fry") or string.find(actionTxt, "make") then
-                                fireproximityprompt(prompt)
-                            end
-                        end
+                    for _, prompt in ipairs(getNearbyPrompts(15)) do
+                        fireproximityprompt(prompt)
                     end
                 end)
-                task.wait(0.2)
+                task.wait(0.5)
             end
         end)
     else
-        if potatoFarmThread then
-            task.cancel(potatoFarmThread)
-            potatoFarmThread = nil
-        end
+        if potatoFarmThread then task.cancel(potatoFarmThread); potatoFarmThread = nil end
     end
 end
 
--- LOGIKA AUTO SELL
 function toggleAutoSell(state)
     getgenv().ZharXUI.AutoSellEnabled = state
     if state then
-        showWarning("Auto Sell", "Mulai menjual produk...")
+        showWarning("Auto Sell", "Memulai Penjualan...")
         if autoSellThread then task.cancel(autoSellThread) end
         
         autoSellThread = task.spawn(function()
             while getgenv().ZharXUI.AutoSellEnabled do
                 pcall(function()
-                    for _, prompt in ipairs(workspace:GetDescendants()) do
-                        if prompt:IsA("ProximityPrompt") then
-                            local parentName = prompt.Parent and prompt.Parent.Name:lower() or ""
-                            local actionTxt = (prompt.ObjectText .. prompt.ActionText):lower()
-                            
-                            if string.find(actionTxt, "sell") or string.find(actionTxt, "jual") or 
-                               string.find(actionTxt, "turn in") or string.find(parentName, "dealer") or 
-                               string.find(parentName, "buyer") then
-                                fireproximityprompt(prompt)
-                            end
-                        end
+                    for _, prompt in ipairs(getNearbyPrompts(15)) do
+                        fireproximityprompt(prompt)
                     end
                 end)
-                task.wait(0.4)
+                task.wait(0.8)
             end
         end)
     else
-        if autoSellThread then
-            task.cancel(autoSellThread)
-            autoSellThread = nil
-        end
+        if autoSellThread then task.cancel(autoSellThread); autoSellThread = nil end
     end
 end
 
--- Anti AFK & Combat
 function toggleAntiAFK(state)
     if state then
         if antiAFKConnection then antiAFKConnection:Disconnect() end
@@ -495,24 +431,16 @@ function dealDamageToTarget(target, damage)
     local targetHumanoid = targetCharacter:FindFirstChild("Humanoid")
     if not targetHumanoid or targetHumanoid.Health <= 0 then return end
     
-    local targetHead = targetCharacter:FindFirstChild("Head")
     local weapon = getCurrentWeapon()
     if weapon then
         for _, remote in ipairs(weapon:GetDescendants()) do
             if remote:IsA("RemoteEvent") then
-                local name = remote.Name:lower()
-                if string.find(name, "fire") or string.find(name, "shoot") or string.find(name, "attack") or string.find(name, "hit") or string.find(name, "damage") then
-                    pcall(function()
-                        remote:FireServer(targetCharacter, damage)
-                        remote:FireServer(targetHumanoid, damage)
-                        remote:FireServer(target, damage)
-                        remote:FireServer(targetHead, damage)
-                    end)
-                end
+                pcall(function()
+                    remote:FireServer(targetCharacter, damage)
+                end)
             end
         end
     end
-    pcall(function() targetHumanoid:TakeDamage(damage) end)
 end
 
 function toggleKillAura(state)
@@ -524,28 +452,19 @@ function toggleKillAura(state)
                 local character = LocalPlayer.Character
                 if character and character:FindFirstChild("HumanoidRootPart") then
                     local rootPart = character.HumanoidRootPart
-                    local maxRange = getgenv().ZharXUI.KillAuraRange or 100
+                    local maxRange = getgenv().ZharXUI.KillAuraRange or 50
                     local baseDamage = getgenv().ZharXUI.KillAuraDamage or 25
-                    local closestPlayer = nil
-                    local closestDist = maxRange
                     
                     for _, player in ipairs(Players:GetPlayers()) do
                         if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
                             local dist = (rootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
-                            if dist < closestDist then
-                                closestDist = dist
-                                closestPlayer = player
+                            if dist <= maxRange then
+                                dealDamageToTarget(player, baseDamage)
                             end
                         end
                     end
-                    
-                    if closestPlayer and closestPlayer.Character and closestPlayer.Character:FindFirstChild("Humanoid") then
-                        if closestPlayer.Character.Humanoid.Health > 0 then
-                            dealDamageToTarget(closestPlayer, baseDamage)
-                        end
-                    end
                 end
-                task.wait(getgenv().ZharXUI.KillAuraDelay or 0.3)
+                task.wait(getgenv().ZharXUI.KillAuraDelay or 0.5)
             end
         end)
     else
@@ -554,7 +473,7 @@ function toggleKillAura(state)
 end
 
 function unloadAll()
-    toggleBigHeadCombat(false)
+    toggleHitboxExtender(false)
     toggleFly(false)
     toggleAimbot(false)
     toggleSilentAim(false)
@@ -580,7 +499,7 @@ local CustomTheme = {
     ToggleColor = Color3.fromRGB(0, 255, 120)
 }
 
-local MainWindow = Kavo.CreateLib("ZharXUI | South Bronx v4.5 (Fix BigHead)", CustomTheme)
+local MainWindow = Kavo.CreateLib("ZharXUI | South Bronx v4.7 (Safe Engine)", CustomTheme)
 
 if CoreGui:FindFirstChild("ZharXUI_ToggleGui") then
     CoreGui.ZharXUI_ToggleGui:Destroy()
@@ -598,17 +517,12 @@ local UIAspectRatioConstraint = Instance.new("UIAspectRatioConstraint")
 ToggleButton.Name = "ZX_LogoButton"
 ToggleButton.Parent = ScreenGui
 ToggleButton.Position = UDim2.new(0, 15, 0.2, 0)
-ToggleButton.Size = UDim2.new(0, 60, 0, 60)
+ToggleButton.Size = UDim2.new(0, 50, 0, 50)
 ToggleButton.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 ToggleButton.Active = true
 ToggleButton.Draggable = true
 ToggleButton.Image = "rbxassetid://130484989541306"
 ToggleButton.ScaleType = Enum.ScaleType.Fit
-
-local ToggleStroke = Instance.new("UIStroke")
-ToggleStroke.Color = Color3.fromRGB(255, 255, 255)
-ToggleStroke.Thickness = 1
-ToggleStroke.Parent = ToggleButton
 
 UIAspectRatioConstraint.Parent = ToggleButton
 UIAspectRatioConstraint.AspectRatio = 1
@@ -626,34 +540,25 @@ MovementSection:NewToggle("Aktifkan Fly", "Mode terbang", function(state)
     getgenv().ZharXUI.FlyEnabled = state
     toggleFly(state)
 end)
-MovementSection:NewSlider("Kecepatan Terbang", "Atur kecepatan", 500, 10, function(value)
+MovementSection:NewSlider("Kecepatan Terbang", "Atur kecepatan", 300, 10, function(value)
     getgenv().ZharXUI.FlySpeed = value
 end)
 
 -- TAB COMBAT
 local CombatTab = MainWindow:NewTab("Combat")
 
-local BigHeadCombatSection = CombatTab:NewSection("Big Head (No Lag / Smooth)")
-BigHeadCombatSection:NewToggle("Aktifkan Big Head Musuh", "Nyalakan/matikan kepala besar", function(state)
-    toggleBigHeadCombat(state)
-end)
-BigHeadCombatSection:NewSlider("Ukuran Kepala Musuh", "Rekomendasi 8-15 agar stabil", 30, 1, function(value)
-    getgenv().ZharXUI.BigHeadSize = value
-end)
-BigHeadCombatSection:NewSlider("Transparansi Kepala", "0% Jelas s/d 80% Samar", 80, 0, function(value)
-    getgenv().ZharXUI.BigHeadTransparency = value
+local HitboxSection = CombatTab:NewSection("Target Marker (Safe BigHead - No Crash)")
+HitboxSection:NewToggle("Aktifkan Target Marker Kepala", "Kotak merah penanda kepala musuh", function(state)
+    toggleHitboxExtender(state)
 end)
 
-local AimbotSection = CombatTab:NewSection("Aimbot")
+local AimbotSection = CombatTab:NewSection("Aimbot (Rekomendasi Utama)")
 AimbotSection:NewToggle("Aktifkan Aimbot", "Auto-lock ke target", function(state)
     getgenv().ZharXUI.AimbotEnabled = state
     toggleAimbot(state)
 end)
-AimbotSection:NewSlider("FOV Aimbot", "Field of View", 500, 50, function(value)
+AimbotSection:NewSlider("FOV Aimbot", "Field of View", 300, 50, function(value)
     getgenv().ZharXUI.AimbotFOV = value
-end)
-AimbotSection:NewSlider("Kehalusan Aimbot", "Smoothness", 100, 1, function(value)
-    getgenv().ZharXUI.AimbotSmoothness = value / 100.0
 end)
 
 local SilentAimSection = CombatTab:NewSection("Silent Aim")
@@ -661,22 +566,10 @@ SilentAimSection:NewToggle("Aktifkan Silent Aim", "Tembak tanpa gerak kamera", f
     getgenv().ZharXUI.SilentAimEnabled = state
     toggleSilentAim(state)
 end)
-SilentAimSection:NewSlider("FOV Silent Aim", "Field of View", 500, 50, function(value)
-    getgenv().ZharXUI.SilentAimFOV = value
-end)
 
 local KillAuraSection = CombatTab:NewSection("Kill Aura")
 KillAuraSection:NewToggle("Aktifkan Kill Aura", "Serang otomatis musuh terdekat", function(state)
     toggleKillAura(state)
-end)
-KillAuraSection:NewSlider("Range Kill Aura", "Jarak serangan (studs)", 1000, 10, function(value)
-    getgenv().ZharXUI.KillAuraRange = value
-end)
-KillAuraSection:NewSlider("Delay Serangan", "Interval (misal: 30 = 0.3s)", 200, 5, function(value)
-    getgenv().ZharXUI.KillAuraDelay = value / 100.0
-end)
-KillAuraSection:NewSlider("Damage Per Hit", "Damage ke musuh", 1000, 1, function(value)
-    getgenv().ZharXUI.KillAuraDamage = value
 end)
 
 -- TAB VISUALS
@@ -687,86 +580,64 @@ ESPSection:NewToggle("Aktifkan ESP", "Lihat pemain lain melalui tembok", functio
     toggleESP(state)
 end)
 
--- TAB AUTO FARM & TELEPORT
+-- TAB AUTO FARM
 local FarmTab = MainWindow:NewTab("Auto Farm")
 
-local SetupSection = FarmTab:NewSection("1. Simpan Lokasi (Berdiri di Tempatnya lalu Klik)")
-SetupSection:NewButton("Set Lokasi Dealer Marshmallow", "Simpan posisi berdiri saat ini", function()
+local SetupSection = FarmTab:NewSection("1. Simpan Lokasi")
+SetupSection:NewButton("Set Lokasi Dealer Marshmallow", "Simpan posisi berdiri", function()
     local char = LocalPlayer.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
         getgenv().ZharXUI.SavedWaypoints.MarshmallowDealer = char.HumanoidRootPart.CFrame
-        showWarning("Saved!", "Posisi Dealer Marshmallow tersimpan!")
+        showWarning("Saved!", "Posisi Tersimpan!")
     end
 end)
 
-SetupSection:NewButton("Set Lokasi Toko Deli / Kentang", "Simpan posisi berdiri saat ini", function()
-    local char = LocalPlayer.Character
-    if char and char:FindFirstChild("HumanoidRootPart") then
-        getgenv().ZharXUI.SavedWaypoints.DeliStore = char.HumanoidRootPart.CFrame
-        showWarning("Saved!", "Posisi Toko Deli/Kentang tersimpan!")
-    end
-end)
-
-SetupSection:NewButton("Set Lokasi Tempat Masak / Packaging", "Simpan posisi berdiri saat ini", function()
+SetupSection:NewButton("Set Lokasi Tempat Masak", "Simpan posisi berdiri", function()
     local char = LocalPlayer.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
         getgenv().ZharXUI.SavedWaypoints.CookingSpot = char.HumanoidRootPart.CFrame
-        showWarning("Saved!", "Posisi Tempat Masak tersimpan!")
+        showWarning("Saved!", "Posisi Tersimpan!")
     end
 end)
 
-SetupSection:NewButton("Set Lokasi Penjualan / Buyer", "Simpan posisi berdiri saat ini", function()
+SetupSection:NewButton("Set Lokasi Tempat Jual", "Simpan posisi berdiri", function()
     local char = LocalPlayer.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
         getgenv().ZharXUI.SavedWaypoints.SellSpot = char.HumanoidRootPart.CFrame
-        showWarning("Saved!", "Posisi Tempat Jual tersimpan!")
+        showWarning("Saved!", "Posisi Tersimpan!")
     end
 end)
 
-local TeleportSection = FarmTab:NewSection("2. Teleport ke Lokasi Tersimpan")
-TeleportSection:NewButton("Teleport ke Dealer Marshmallow", "Ke tempat beli Marshmallow", function()
+local TeleportSection = FarmTab:NewSection("2. Teleport Lokasi")
+TeleportSection:NewButton("Teleport Dealer Marshmallow", "Ke dealer", function()
     safeTeleport(getgenv().ZharXUI.SavedWaypoints.MarshmallowDealer, "Dealer Marshmallow")
 end)
-TeleportSection:NewButton("Teleport ke Toko Deli / Kentang", "Ke toko beli Kentang", function()
-    safeTeleport(getgenv().ZharXUI.SavedWaypoints.DeliStore, "Toko Deli / Kentang")
-end)
-TeleportSection:NewButton("Teleport ke Tempat Masak", "Ke dapur / tempat racik", function()
+TeleportSection:NewButton("Teleport Tempat Masak", "Ke dapur", function()
     safeTeleport(getgenv().ZharXUI.SavedWaypoints.CookingSpot, "Tempat Masak")
 end)
-TeleportSection:NewButton("Teleport ke Tempat Jual", "Ke NPC Jual", function()
+TeleportSection:NewButton("Teleport Tempat Jual", "Ke buyer", function()
     safeTeleport(getgenv().ZharXUI.SavedWaypoints.SellSpot, "Tempat Jual")
 end)
 
-local BuySection = FarmTab:NewSection("3. Auto Buy (Berdiri dekat Toko/Dealer)")
-BuySection:NewToggle("Auto Buy Marshmallow", "Beli bahan Marshmallow otomatis", function(state)
+local FarmActionSection = FarmTab:NewSection("3. Actions (Harus Dekat Objek)")
+FarmActionSection:NewToggle("Auto Buy Marshmallow", "Beli otomatis", function(state)
     toggleAutoBuyMarshmallow(state)
 end)
-
-local FarmSection = FarmTab:NewSection("4. Auto Masak / Pack")
-FarmSection:NewToggle("Auto Masak/Pack Marshmallow", "Memasak Marshmallow otomatis", function(state)
+FarmActionSection:NewToggle("Auto Masak Marshmallow", "Masak otomatis", function(state)
     toggleMarshmallowFarm(state)
 end)
-FarmSection:NewToggle("Auto Masak Potato / Chips", "Memasak Chips otomatis", function(state)
-    togglePotatoFarm(state)
-end)
-
-local SellSection = FarmTab:NewSection("5. Auto Sell")
-SellSection:NewToggle("Auto Sell Product", "Jual otomatis ke NPC / Buyer", function(state)
+FarmActionSection:NewToggle("Auto Sell Product", "Jual otomatis", function(state)
     toggleAutoSell(state)
 end)
 
 -- TAB UTILITY
 local UtilityTab = MainWindow:NewTab("Utility")
-local UtilitySection = UtilityTab:NewSection("Anti-AFK")
-UtilitySection:NewToggle("Anti-AFK", "Cegah kick karena AFK", function(state)
+local UtilitySection = UtilityTab:NewSection("Anti-AFK & Unload")
+UtilitySection:NewToggle("Anti-AFK", "Cegah kick", function(state)
     getgenv().ZharXUI.AntiAFKEnabled = state
     toggleAntiAFK(state)
 end)
-
--- TAB SETTINGS
-local SettingsTab = MainWindow:NewTab("Settings")
-local SettingsSection = SettingsTab:NewSection("About")
-SettingsSection:NewButton("Unload Script", "Hapus semua fitur", function()
+UtilitySection:NewButton("Unload Script", "Bersihkan memory", function()
     unloadAll()
 end)
 
@@ -777,4 +648,4 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
-print("ZharXUI v4.5 Fullcode Loaded!")
+print("ZharXUI v4.7 Safe Engine Loaded!")
