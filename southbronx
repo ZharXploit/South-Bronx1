@@ -1,295 +1,144 @@
 -- ============================================
--- KILL AURA ULTIMATE v3.0 - SOUTH BRONX
--- Auto pegang senjata + Auto tembak + Tembus tembok
+-- TAMBAHAN UI UNTUK AUTO BUY (South Bronx)
+-- Masukkan ke dalam script UI utama (setelah MainWindow dibuat)
 -- ============================================
 
--- Variabel Kill Aura
-local killAuraConnection = nil
-local killAuraShootConnection = nil
-local isKillAuraActive = false
-local currentTarget = nil
-local killAuraWeapon = nil
+-- ============================================
+-- 1. TAB AUTO BUY
+-- ============================================
+local AutoBuyTab = MainWindow:NewTab("Auto Buy")
 
 -- ============================================
--- FUNGSI: Ambil senjata terbaik
+-- 2. SECTION SET WAYPOINT
 -- ============================================
+local WaypointSection = AutoBuyTab:NewSection("📍 Set Waypoint (Berdiri di Tempat)")
 
-local function getBestWeapon()
+WaypointSection:NewButton("Set Dealer Marshmallow", "Berdiri di lapangan basket belakang dealer", function()
     local char = LocalPlayer.Character
-    if not char then return nil end
-    
-    -- Cek senjata yang dipegang sekarang
-    local currentWeapon = char:FindFirstChildOfClass("Tool")
-    if currentWeapon then
-        return currentWeapon
-    end
-    
-    -- Cari senjata di backpack
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if backpack then
-        local weapons = {}
-        for _, tool in ipairs(backpack:GetChildren()) do
-            if tool:IsA("Tool") then
-                table.insert(weapons, tool)
-            end
-        end
-        
-        -- Ambil senjata pertama yang ditemukan
-        if #weapons > 0 then
-            return weapons[1]
-        end
-    end
-    
-    return nil
-end
-
--- ============================================
--- FUNGSI: Auto pegang senjata
--- ============================================
-
-local function autoEquipWeapon()
-    local char = LocalPlayer.Character
-    if not char then return false end
-    
-    -- Cek apakah sudah pegang senjata
-    local currentWeapon = char:FindFirstChildOfClass("Tool")
-    if currentWeapon then
-        killAuraWeapon = currentWeapon
-        return true
-    end
-    
-    -- Cari senjata di backpack
-    local backpack = LocalPlayer:FindFirstChild("Backpack")
-    if not backpack then return false end
-    
-    for _, tool in ipairs(backpack:GetChildren()) do
-        if tool:IsA("Tool") then
-            -- Pindahkan ke karakter
-            local success = pcall(function()
-                tool.Parent = char
-            end)
-            if success then
-                killAuraWeapon = tool
-                return true
-            end
-        end
-    end
-    
-    return false
-end
-
--- ============================================
--- FUNGSI: Auto tembak (simulasi click)
--- ============================================
-
-local function autoShoot(target)
-    if not target or not target.Character then return end
-    
-    local targetChar = target.Character
-    local targetHead = targetChar:FindFirstChild("Head")
-    local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
-    local targetHumanoid = targetChar:FindFirstChild("Humanoid")
-    
-    if not targetHumanoid or targetHumanoid.Health <= 0 then return end
-    
-    -- Method 1: Arahkan kamera ke target (untuk aim assist)
-    local aimPart = targetHead or targetRoot
-    if aimPart then
-        pcall(function()
-            Camera.CFrame = CFrame.new(Camera.CFrame.Position, aimPart.Position)
-        end)
-    end
-    
-    -- Method 2: Simulasi mouse click (jika ada mouse)
-    pcall(function()
-        if getgenv().mouse then
-            getgenv().mouse.Button1Down:Fire()
-            task.wait(0.02)
-            getgenv().mouse.Button1Up:Fire()
-        end
-    end)
-    
-    -- Method 3: Coba FireServer langsung ke remote events
-    local weapon = killAuraWeapon or getCurrentWeapon()
-    if weapon then
-        for _, remote in ipairs(weapon:GetDescendants()) do
-            if remote:IsA("RemoteEvent") then
-                local name = remote.Name:lower()
-                if string.find(name, "fire") or string.find(name, "shoot") or 
-                   string.find(name, "attack") or string.find(name, "hit") or 
-                   string.find(name, "damage") or string.find(name, "click") then
-                    pcall(function()
-                        remote:FireServer(targetChar, 999)
-                        remote:FireServer(targetHumanoid, 999)
-                        remote:FireServer(targetHead, 999)
-                        remote:FireServer(targetRoot, 999)
-                        remote:FireServer(target, 999)
-                    end)
-                end
-            end
-        end
-    end
-    
-    -- Method 4: Coba remote events di game
-    for _, remote in ipairs(game:GetDescendants()) do
-        if remote:IsA("RemoteEvent") then
-            local name = remote.Name:lower()
-            if string.find(name, "damage") or string.find(name, "hit") or 
-               string.find(name, "attack") or string.find(name, "shoot") then
-                pcall(function()
-                    remote:FireServer(targetChar, 999)
-                    remote:FireServer(targetHumanoid, 999)
-                    remote:FireServer(targetHead, 999)
-                end)
-            end
-        end
-    end
-    
-    -- Method 5: Coba gunakan tool Activate
-    if weapon and weapon:FindFirstChild("Activate") then
-        pcall(function()
-            weapon.Activate:FireServer()
-        end)
-    end
-    
-    -- Method 6: Coba gunakan RemoteFunction
-    for _, remote in ipairs(game:GetDescendants()) do
-        if remote:IsA("RemoteFunction") then
-            local name = remote.Name:lower()
-            if string.find(name, "damage") or string.find(name, "hit") or 
-               string.find(name, "attack") or string.find(name, "shoot") then
-                pcall(function()
-                    remote:InvokeServer(targetChar, 999)
-                end)
-            end
-        end
-    end
-end
-
--- ============================================
--- FUNGSI: Cari target terbaik (tembus tembok)
--- ============================================
-
-local function findBestTarget(maxRange)
-    maxRange = maxRange or 100
-    local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
-    
-    local rootPos = char.HumanoidRootPart.Position
-    local bestTarget = nil
-    local bestScore = -1
-    
-    for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            local targetChar = player.Character
-            local targetHumanoid = targetChar:FindFirstChild("Humanoid")
-            local targetRoot = targetChar:FindFirstChild("HumanoidRootPart")
-            
-            if targetHumanoid and targetHumanoid.Health > 0 and targetRoot then
-                local dist = (rootPos - targetRoot.Position).Magnitude
-                
-                -- Hitung score (jarak + health)
-                local score = (maxRange - dist) + (targetHumanoid.Health / 10)
-                
-                -- Bonus: target yang lagi visible (tapi kita tetep bisa tembus tembok)
-                local raycast = RaycastParams.new()
-                raycast.FilterDescendantsInstances = {char}
-                raycast.IgnoreWater = true
-                
-                local ray = workspace:Raycast(rootPos, (targetRoot.Position - rootPos).Unit * dist, raycast)
-                if not ray then
-                    score = score + 50 -- Bonus untuk target yang ga kehalang tembok
-                end
-                
-                if score > bestScore then
-                    bestScore = score
-                    bestTarget = player
-                end
-            end
-        end
-    end
-    
-    return bestTarget
-end
-
--- ============================================
--- FUNGSI: Kill Aura Main Loop
--- ============================================
-
-local function killAuraLoop()
-    while isKillAuraActive do
-        -- Step 1: Auto pegang senjata
-        if not killAuraWeapon or not killAuraWeapon.Parent then
-            autoEquipWeapon()
-        end
-        
-        -- Step 2: Cari target terbaik
-        local maxRange = getgenv().ZharXUI.KillAuraRange or 100
-        local target = findBestTarget(maxRange)
-        
-        if target then
-            currentTarget = target
-            -- Step 3: Tembak terus ke target
-            autoShoot(target)
-        end
-        
-        -- Delay sesuai setting
-        local delay = getgenv().ZharXUI.KillAuraDelay or 0.1
-        task.wait(delay)
-    end
-end
-
--- ============================================
--- FUNGSI: Toggle Kill Aura (GANTI YANG INI)
--- ============================================
-
-function toggleKillAura(state)
-    getgenv().ZharXUI.KillAuraEnabled = state
-    isKillAuraActive = state
-    
-    if state then
-        -- Hentikan thread lama
-        if killAuraThread then
-            task.cancel(killAuraThread)
-            killAuraThread = nil
-        end
-        
-        -- Auto equip weapon
-        autoEquipWeapon()
-        
-        if not killAuraWeapon then
-            showWarning("Kill Aura", "⚠️ Tidak ada senjata! Cari senjata dulu.")
-            getgenv().ZharXUI.KillAuraEnabled = false
-            isKillAuraActive = false
-            return
-        end
-        
-        showWarning("Kill Aura", "🔫 Kill Aura AKTIF! Senjata: " .. killAuraWeapon.Name)
-        
-        -- Jalankan loop di thread terpisah
-        killAuraThread = task.spawn(killAuraLoop)
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        DealerLocations.MarshmallowDealer = char.HumanoidRootPart.CFrame
+        showWarning("Waypoint Set", "✅ Dealer Marshmallow tersimpan!")
     else
-        -- Matikan
-        if killAuraThread then
-            task.cancel(killAuraThread)
-            killAuraThread = nil
-        end
-        isKillAuraActive = false
-        currentTarget = nil
-        killAuraWeapon = nil
-        showWarning("Kill Aura", "⏹️ Kill Aura DINONAKTIFKAN")
-    end
-end
-
--- ============================================
--- FUNGSI: Auto equip saat spawn
--- ============================================
-
-LocalPlayer.CharacterAdded:Connect(function()
-    task.wait(0.5)
-    if getgenv().ZharXUI.KillAuraEnabled then
-        autoEquipWeapon()
+        showWarning("Error", "Karakter tidak ditemukan!")
     end
 end)
 
-print("✅ Kill Aura Ultimate v3.0 Loaded!")
+WaypointSection:NewButton("Set Dealer Kentang", "Berdiri di dealer kentang", function()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        DealerLocations.PotatoDealer = char.HumanoidRootPart.CFrame
+        showWarning("Waypoint Set", "✅ Dealer Kentang tersimpan!")
+    else
+        showWarning("Error", "Karakter tidak ditemukan!")
+    end
+end)
+
+WaypointSection:NewButton("Set Apartemen/Dapur", "Berdiri di tempat masak", function()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        DealerLocations.Apartemen = char.HumanoidRootPart.CFrame
+        showWarning("Waypoint Set", "✅ Apartemen tersimpan!")
+    else
+        showWarning("Error", "Karakter tidak ditemukan!")
+    end
+end)
+
+WaypointSection:NewButton("Set Tempat Jual", "Berdiri di tempat jual hasil", function()
+    local char = LocalPlayer.Character
+    if char and char:FindFirstChild("HumanoidRootPart") then
+        DealerLocations.SellSpot = char.HumanoidRootPart.CFrame
+        showWarning("Waypoint Set", "✅ Tempat Jual tersimpan!")
+    else
+        showWarning("Error", "Karakter tidak ditemukan!")
+    end
+end)
+
+-- ============================================
+-- 3. SECTION AUTO BUY
+-- ============================================
+local BuySection = AutoBuyTab:NewSection("🛒 Auto Beli Bahan")
+
+BuySection:NewButton("Beli Marshmallow", "Beli Gelatin + Water + Sugar Block Bag", function()
+    task.spawn(function()
+        autoBuyMarshmallow()
+    end)
+end)
+
+BuySection:NewButton("Beli Kentang", "Beli bahan kentang/tepung", function()
+    task.spawn(function()
+        autoBuyPotato()
+    end)
+end)
+
+BuySection:NewButton("Beli Semua", "Beli marshmallow + kentang", function()
+    task.spawn(function()
+        autoBuyMarshmallow()
+        task.wait(1)
+        autoBuyPotato()
+    end)
+end)
+
+-- ============================================
+-- 4. SECTION AUTO FARM (FULL CYCLE)
+-- ============================================
+local FarmSection = AutoBuyTab:NewSection("🚀 Auto Farm Full Cycle")
+
+FarmSection:NewToggle("Auto Farm ON/OFF", "Beli → Masak → Jual → Ulang", function(state)
+    if state then
+        startAutoFarm()
+    else
+        stopAutoFarm()
+    end
+end)
+
+FarmSection:NewButton("⚠️ Stop All", "Hentikan semua proses", function()
+    stopAutoFarm()
+    showWarning("Stopped", "⏹️ Semua proses dihentikan!")
+end)
+
+-- ============================================
+-- 5. SECTION STATUS
+-- ============================================
+local StatusSection = AutoBuyTab:NewSection("📊 Status")
+
+StatusSection:NewButton("Cek Status", "Lihat status waypoint & inventory", function()
+    task.spawn(function()
+        local status = "=== STATUS AUTO FARM ===\n"
+        status = status .. "\n📍 WAYPOINT:\n"
+        status = status .. "  Dealer Marshmallow: " .. (DealerLocations.MarshmallowDealer and "✅ SET" or "❌ NOT SET") .. "\n"
+        status = status .. "  Dealer Kentang: " .. (DealerLocations.PotatoDealer and "✅ SET" or "❌ NOT SET") .. "\n"
+        status = status .. "  Apartemen: " .. (DealerLocations.Apartemen and "✅ SET" or "❌ NOT SET") .. "\n"
+        status = status .. "  Tempat Jual: " .. (DealerLocations.SellSpot and "✅ SET" or "❌ NOT SET") .. "\n"
+        status = status .. "\n🎒 INVENTORY:\n"
+        
+        local hasGel = hasItem({"gelatin", "gel"})
+        local hasWater = hasItem({"water"})
+        local hasSugar = hasItem({"sugar", "block"})
+        local hasPotato = hasItem({"potato", "kentang"})
+        
+        status = status .. "  Gelatin: " .. (hasGel and "✅ ADA" or "❌ KOSONG") .. "\n"
+        status = status .. "  Water: " .. (hasWater and "✅ ADA" or "❌ KOSONG") .. "\n"
+        status = status .. "  Sugar Block: " .. (hasSugar and "✅ ADA" or "❌ KOSONG") .. "\n"
+        status = status .. "  Kentang: " .. (hasPotato and "✅ ADA" or "❌ KOSONG") .. "\n"
+        
+        showWarning("Status", status)
+    end)
+end)
+
+-- ============================================
+-- 6. UPDATE GLOBAL DEALER LOCATIONS
+-- ============================================
+-- Pastikan DealerLocations tersedia di global
+if not getgenv().DealerLocations then
+    getgenv().DealerLocations = {
+        MarshmallowDealer = nil,
+        PotatoDealer = nil,
+        Apartemen = nil,
+        SellSpot = nil
+    }
+end
+
+-- Sync dengan global
+DealerLocations = getgenv().DealerLocations
+
+print("✅ UI Auto Buy berhasil ditambahkan!")
